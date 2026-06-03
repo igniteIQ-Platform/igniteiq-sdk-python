@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "igniteiq-vault"
+version = "0.1.0"
+description = "Python SDK for the IgniteIQ Vault API — query home services data from LLM agents"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = [
+    "httpx>=0.24.0",
+]
+keywords = ["igniteiq", "vault", "home-services", "servicetitan", "ai", "llm", "langchain"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.optional-dependencies]
+langchain = ["langchain-core>=0.1.0"]
+llamaindex = ["llama-index-core>=0.10.0"]
+
+[project.urls]
+Homepage = "https://github.com/igniteIQ-Platform/igniteiq-sdk-python"
