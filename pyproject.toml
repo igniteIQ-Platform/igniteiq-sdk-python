@@ -24,3 +24,6 @@ llamaindex = ["llama-index-core>=0.10.0"]
 
 [project.urls]
 Homepage = "https://github.com/igniteIQ-Platform/igniteiq-sdk-python"
+
+[tool.hatch.build.targets.wheel]
+packages = ["igniteiq"]
