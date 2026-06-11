@@ -285,6 +285,109 @@ class VaultClient:
         return self._Schema(self)
 
     # ------------------------------------------------------------------
+    # Webhooks sub-resource
+    # ------------------------------------------------------------------
+
+    class _Webhooks:
+        """Manage webhooks — create, list, delete.
+
+        Requires an API key with the ``webhooks`` scope (create one in
+        Studio → Settings → API Keys). Each method has an async form and a
+        ``*_sync`` wrapper.
+        """
+
+        VALID_EVENTS = (
+            "forge.run.completed",
+            "forge.run.failed",
+            "depot.sync.completed",
+            "depot.sync.failed",
+            "vault.schema.updated",
+        )
+
+        def __init__(self, client: "VaultClient") -> None:
+            self._client = client
+
+        async def create(
+            self,
+            url: str,
+            events: list[str],
+            *,
+            secret: str | None = None,
+        ) -> dict:
+            """Register a webhook.
+
+            If ``secret`` is omitted, IgniteIQ generates one and returns it
+            **once** on the created webhook (``secret`` key) — store it to verify
+            the ``X-IgniteIQ-Signature`` header on deliveries.
+
+            Parameters
+            ----------
+            url : str
+                HTTPS endpoint that will receive event POSTs.
+            events : list[str]
+                Subscribed events. See :attr:`VALID_EVENTS`.
+            secret : str | None, optional
+                Your signing secret. Omit to have IgniteIQ generate one.
+
+            Returns
+            -------
+            dict
+                Keys: ``id``, ``url``, ``events``, ``isActive``, ``createdAt``,
+                and ``secret`` (only when generated).
+
+            Example
+            -------
+            >>> wh = await client.webhooks.create(
+            ...     "https://example.com/iq-hook",
+            ...     ["forge.run.completed"],
+            ... )
+            >>> wh["secret"]  # 'whsec_...' (shown only here)
+            """
+            body: dict[str, Any] = {"url": url, "events": events}
+            if secret is not None:
+                body["secret"] = secret
+            return await self._client._request("POST", "/api/webhooks", json=body)
+
+        async def list(self) -> list[dict]:
+            """List active webhooks for the organisation. Secrets are never returned."""
+            res = await self._client._request("GET", "/api/webhooks")
+            return res.get("webhooks", []) if isinstance(res, dict) else []
+
+        async def delete(self, webhook_id: str) -> None:
+            """Deactivate (delete) a webhook by id."""
+            await self._client._request("DELETE", f"/api/webhooks/{webhook_id}")
+
+        def create_sync(
+            self,
+            url: str,
+            events: list[str],
+            *,
+            secret: str | None = None,
+        ) -> dict:
+            """Synchronous wrapper for :meth:`create`."""
+            return self._client._sync(self.create(url, events, secret=secret))
+
+        def list_sync(self) -> list[dict]:
+            """Synchronous wrapper for :meth:`list`."""
+            return self._client._sync(self.list())
+
+        def delete_sync(self, webhook_id: str) -> None:
+            """Synchronous wrapper for :meth:`delete`."""
+            return self._client._sync(self.delete(webhook_id))
+
+    @property
+    def webhooks(self) -> "_Webhooks":
+        """Manage webhooks — create, list, delete (requires ``webhooks`` scope).
+
+        Example
+        -------
+        >>> wh = await client.webhooks.create("https://…", ["forge.run.completed"])
+        >>> hooks = await client.webhooks.list()
+        >>> await client.webhooks.delete(wh["id"])
+        """
+        return self._Webhooks(self)
+
+    # ------------------------------------------------------------------
     # Sync wrappers
     # ------------------------------------------------------------------
 

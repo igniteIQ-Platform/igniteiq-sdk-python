@@ -31,4 +31,4 @@ from .client import VaultClient
 from .errors import VaultError
 
 __all__ = ["VaultClient", "VaultError"]
-__version__ = "0.1.0"
+__version__ = "0.2.0"

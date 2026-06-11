@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "igniteiq-vault"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python SDK for the IgniteIQ Vault API — query home services data from LLM agents"
 readme = "README.md"
 license = { text = "MIT" }
