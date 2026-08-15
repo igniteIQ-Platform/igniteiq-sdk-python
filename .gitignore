@@ -5,8 +5,5 @@ dist/
 build/
 .venv/
 
-# Local AI assistant context (personal, not shared with team)
-AGENTS.md
-CLAUDE.md
 CLAUDE.local.md
 AGENTS.local.md
