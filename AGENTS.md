@@ -37,3 +37,18 @@ python -m build                             # build sdist/wheel
 - Don't make a breaking API change without a version bump that reflects it.
 - Don't let the two SDKs' public surfaces drift silently.
 - Never commit a real API key or customer identifier.
+
+## Python version support — the base and the extras differ
+
+`pyproject` declares `requires-python = ">=3.9"` and the base package honours it (CI tests
+3.9 and 3.12). **The `llamaindex` extra does not work on 3.9**, and the cause is upstream:
+`llama-index-core` pulls in `banks`, whose `config.py` evaluates `Path | None` in a class
+body — PEP 604 syntax that only works from 3.10. `pyproject` cannot express a per-extra
+Python floor, so CI tests the extras on 3.12 only and this note is the record.
+
+🔑 **`from __future__ import annotations` is load-bearing in every module that uses
+`X | None`.** It defers annotations to strings so PEP 604 unions are never evaluated at
+runtime. `errors.py` was missing it, which made the PUBLISHED 0.2.0 fail on import for every
+3.9 user with `TypeError: unsupported operand type(s) for |`. Eleven such unions in
+`client.py` were harmless purely because that file had the import. Fixed 2026-08-30 — and it
+needs a release to reach anyone.

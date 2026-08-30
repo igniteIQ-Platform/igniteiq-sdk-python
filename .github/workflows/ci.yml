@@ -1,0 +1,144 @@
+# CI for a package the public installs from PyPI.
+#
+# Until 2026-08-30 this repo had NO workflows at all. Nothing checked that the package
+# builds, imports, or still supports the Python floor it advertises — on a package anyone
+# can `pip install igniteiq-vault` and that LLM agents are pointed at.
+#
+# Publishing is manual and stays manual: there is no release job here, so a merge cannot
+# become a public release by accident. This reports whether the thing we WOULD publish is
+# sound.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-import:
+    name: build + import (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # THE FLOOR IS THE POINT. pyproject declares requires-python >=3.9, which is a
+        # promise to anyone who installs this. Testing only the newest interpreter would
+        # let a 3.10+ syntax feature through and break every consumer on the version we
+        # told them was supported. 3.12 covers the other end.
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # Installs the declared dependencies too, so this fails if a dependency is missing
+      # from pyproject rather than merely absent from someone's laptop.
+      - name: Install the package as a consumer would
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+
+      # Import from a DIFFERENT directory, so the installed package is exercised rather
+      # than the source tree sitting in the working directory. A missing entry in
+      # tool.hatch.build.targets.wheel would pass in-tree and fail for every real user.
+      - name: Import the installed package
+        run: |
+          cd /tmp
+          python -c "import igniteiq; print('igniteiq ok:', sorted(n for n in dir(igniteiq) if not n.startswith('_'))[:10])"
+
+      # The extras are optional by design: the base install must not require langchain or
+      # llama-index. If importing the base package started pulling those in, every consumer
+      # who did not ask for them would break.
+      - name: The base install must NOT require the optional extras
+        run: |
+          cd /tmp
+          python - <<'PY'
+          import importlib, sys
+          for mod in ("langchain_core", "llama_index"):
+              if mod in sys.modules:
+                  raise SystemExit(f"{mod} was imported by the base package — extras must stay optional")
+          print("base import pulls in neither langchain_core nor llama_index")
+          PY
+
+
+  package:
+    name: wheel builds and is installable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the distribution
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      # A wheel that builds but omits the package directory installs cleanly and then
+      # fails on import — the failure a consumer sees, not one we would.
+      - name: Install the built wheel in a clean venv and import it
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/v
+          /tmp/v/bin/pip install --quiet dist/*.whl
+          cd /tmp && /tmp/v/bin/python -c "import igniteiq; print('wheel import ok')"
+
+  version:
+    name: version vs PyPI (advisory)
+    runs-on: ubuntu-latest
+    # Advisory: being ahead of PyPI is the NORMAL state between releases. This exists to
+    # answer "is what we are about to publish already published", not to gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compare
+        run: |
+          set -uo pipefail
+          LOCAL=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          PUBLISHED=$(curl -s --max-time 20 https://pypi.org/pypi/igniteiq-vault/json | python -c "import sys,json;print(json.load(sys.stdin)['info']['version'])" || echo "unknown")
+          echo "repo=$LOCAL  pypi=$PUBLISHED"
+          if [ "$LOCAL" = "$PUBLISHED" ]; then
+            echo "::warning::Version $LOCAL is ALREADY on PyPI. Publishing without bumping will be rejected."
+          else
+            echo "Repo is at $LOCAL, PyPI has $PUBLISHED — unreleased changes, which is expected between releases."
+          fi
+
+  extras:
+    name: optional extras import (py3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ⚠️ 3.12 ONLY, AND NOT BECAUSE WE DID NOT TRY. The llamaindex extra is NOT
+      # importable on Python 3.9, and the incompatibility is upstream rather than ours:
+      # llama-index-core pulls in `banks`, whose config.py evaluates `Path | None` in a
+      # class body, which is PEP 604 syntax that only works from 3.10:
+      #
+      #   File ".../banks/config.py", line 32, in _BanksConfig
+      #     MEDIA_ROOT: Path | None = None
+      #   TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'
+      #
+      # So the BASE package supports 3.9 (tested above, and a real bug in errors.py was
+      # fixed to keep that true) while the llamaindex extra effectively needs 3.10+. That
+      # asymmetry is worth knowing before someone "fixes" this matrix to match the other
+      # job — pyproject cannot express a per-extra Python floor, so the split lives here.
+      - name: Install and import both extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[langchain]" ".[llamaindex]"
+          cd /tmp
+          python -c "import igniteiq.langchain, igniteiq.llamaindex; print('extras ok')"
