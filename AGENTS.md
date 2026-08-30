@@ -73,10 +73,33 @@ So `>=3.9` promised a configuration that has never existed and has no upstream p
 Raising the floor makes the metadata describe the package.
 
 ⚠️ **Raising the floor does not protect anyone already on 3.9.** PyPI still serves 0.2.0 and
-0.1.0 with `requires-python >=3.9`; pip on 3.9 will keep resolving to them and keep failing
-at import. The floor only governs versions published *after* it lands. Making 3.9 fail
-cleanly — "no matching distribution" rather than a `TypeError` — means yanking both existing
-releases, which is a separate decision and has not been taken.
+0.1.0 with `requires-python >=3.9`; pip on 3.9 keeps resolving to them and keeps failing at
+import. The floor governs only versions published *after* it lands.
+
+### Yanking 0.1.0 / 0.2.0 — publish 0.3.0 FIRST
+
+Yanking is what turns 3.9 from a confusing runtime `TypeError` into a clear install-time
+refusal. Measured with pip against a local PEP 503 index, 3.11 standing in for 3.9:
+
+| state of 0.1.0 / 0.2.0 | `pip install igniteiq-vault` on 3.9 |
+|---|---|
+| live (today) | silently installs 0.2.0, then `TypeError` on import |
+| yanked, **0.3.0 published** | `Ignored the following yanked versions: 0.1.0, 0.2.0` → `No matching distribution found` |
+| yanked, **0.3.0 not published** | the same clean failure — **for every user on every Python version** |
+
+🔴 **Order matters and the wrong order is an outage.** pip does not fall back to a yanked
+version for a bare requirement, so yanking before 0.3.0 exists makes the package
+uninstallable for everyone, not just 3.9. Publish, then yank.
+
+The one requirement that still resolves to a yanked release is an exact pin (`==0.2.0`),
+which installs with a warning and prints the yank reason. That reason string is the only
+message a pinned consumer will ever see, so it should say what to do:
+
+    Fails to import on Python 3.9. Use 0.3.0 or later, which requires Python 3.10+.
+
+Yanking is reversible — same menu at
+`https://pypi.org/manage/project/igniteiq-vault/releases/` — and is web-UI only; there is no
+twine or API path for it, so it cannot be scripted or done by an agent.
 
 🔑 **The low end of the CI matrix must equal `requires-python`, and that is now checked
 rather than remembered.** `scripts/check_python_floor.py` compares the two and fails the
