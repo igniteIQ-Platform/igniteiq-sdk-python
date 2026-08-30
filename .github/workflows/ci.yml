@@ -67,11 +67,6 @@ jobs:
           print("base import pulls in neither langchain_core nor llama_index")
           PY
 
-      - name: Extras install and import
-        run: |
-          pip install ".[langchain]" ".[llamaindex]"
-          cd /tmp
-          python -c "import igniteiq.langchain, igniteiq.llamaindex; print('extras ok')"
 
   package:
     name: wheel builds and is installable
@@ -118,3 +113,32 @@ jobs:
           else
             echo "Repo is at $LOCAL, PyPI has $PUBLISHED — unreleased changes, which is expected between releases."
           fi
+
+  extras:
+    name: optional extras import (py3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ⚠️ 3.12 ONLY, AND NOT BECAUSE WE DID NOT TRY. The llamaindex extra is NOT
+      # importable on Python 3.9, and the incompatibility is upstream rather than ours:
+      # llama-index-core pulls in `banks`, whose config.py evaluates `Path | None` in a
+      # class body, which is PEP 604 syntax that only works from 3.10:
+      #
+      #   File ".../banks/config.py", line 32, in _BanksConfig
+      #     MEDIA_ROOT: Path | None = None
+      #   TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'
+      #
+      # So the BASE package supports 3.9 (tested above, and a real bug in errors.py was
+      # fixed to keep that true) while the llamaindex extra effectively needs 3.10+. That
+      # asymmetry is worth knowing before someone "fixes" this matrix to match the other
+      # job — pyproject cannot express a per-extra Python floor, so the split lives here.
+      - name: Install and import both extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[langchain]" ".[llamaindex]"
+          cd /tmp
+          python -c "import igniteiq.langchain, igniteiq.llamaindex; print('extras ok')"
