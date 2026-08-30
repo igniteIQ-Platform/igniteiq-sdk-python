@@ -26,11 +26,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # THE FLOOR IS THE POINT. pyproject declares requires-python >=3.9, which is a
+        # THE FLOOR IS THE POINT. pyproject declares requires-python >=3.10, which is a
         # promise to anyone who installs this. Testing only the newest interpreter would
-        # let a 3.10+ syntax feature through and break every consumer on the version we
-        # told them was supported. 3.12 covers the other end.
-        python: ["3.9", "3.12"]
+        # let a 3.11+ feature through and break every consumer on the version we told them
+        # was supported. 3.12 covers the other end.
+        #
+        # The floor was >=3.9 until 2026-08-30. It was never true — both published releases
+        # fail to import on 3.9 — so it was raised to match the package rather than patched
+        # to match the promise. Keep the low end of this matrix EQUAL to requires-python;
+        # the whole value of the job is that the two cannot drift apart unnoticed.
+        python: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v5
 
@@ -67,6 +72,27 @@ jobs:
           print("base import pulls in neither langchain_core nor llama_index")
           PY
 
+
+  # ── THE CHECK THAT KEEPS THE OTHER CHECKS HONEST ──────────────────────────────────
+  #
+  # The matrix below tests the floor only while someone remembers to keep the two in step.
+  # They were out of step for two releases: pyproject said 3.9, nothing ever started a 3.9,
+  # and both published versions shipped unable to import there. Green CI, false promise.
+  floor:
+    name: CI tests the floor we promise
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Prove the rule still fires before trusting a clean run (ADR 0001).
+      - name: Self-test the floor rule
+        run: python3 scripts/check_python_floor.py --self-test
+
+      - name: requires-python must equal the matrix floor
+        run: python3 scripts/check_python_floor.py
 
   package:
     name: wheel builds and is installable
@@ -115,27 +141,31 @@ jobs:
           fi
 
   extras:
-    name: optional extras import (py3.12)
+    name: optional extras import (py${{ matrix.python }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Same matrix as the base package, which it did NOT used to be. While the floor was
+        # 3.9 this job ran on 3.12 only, because the llamaindex extra cannot work on 3.9:
+        # llama-index-core pulls in `banks`, whose config.py evaluates `Path | None` in a
+        # class body — PEP 604 syntax that needs 3.10 —
+        #
+        #   File ".../banks/config.py", line 32, in _BanksConfig
+        #     MEDIA_ROOT: Path | None = None
+        #   TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'
+        #
+        # …while `banks` advertises requires-python >=3.9, so pip installs it and the
+        # failure lands at import. Raising our floor to 3.10 removed the asymmetry: both
+        # upstreams (llama-index-core and langchain-core) declare >=3.10 themselves, so the
+        # extras are testable on the floor now and the split has no reason to exist.
+        python: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
 
-      # ⚠️ 3.12 ONLY, AND NOT BECAUSE WE DID NOT TRY. The llamaindex extra is NOT
-      # importable on Python 3.9, and the incompatibility is upstream rather than ours:
-      # llama-index-core pulls in `banks`, whose config.py evaluates `Path | None` in a
-      # class body, which is PEP 604 syntax that only works from 3.10:
-      #
-      #   File ".../banks/config.py", line 32, in _BanksConfig
-      #     MEDIA_ROOT: Path | None = None
-      #   TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'
-      #
-      # So the BASE package supports 3.9 (tested above, and a real bug in errors.py was
-      # fixed to keep that true) while the llamaindex extra effectively needs 3.10+. That
-      # asymmetry is worth knowing before someone "fixes" this matrix to match the other
-      # job — pyproject cannot express a per-extra Python floor, so the split lives here.
       - name: Install and import both extras
         run: |
           python -m pip install --upgrade pip

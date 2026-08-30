@@ -2,12 +2,11 @@
 IgniteIQ Vault SDK — error types.
 """
 
-# Required for `int | None` below to work on Python 3.9, which pyproject promises to
-# support. PEP 604 unions are only evaluated at runtime from 3.10 onward; this defers every
-# annotation to a string so they never are. client.py, langchain.py and llamaindex.py have
-# always had this line — errors.py was the one module missing it, which made the published
-# package fail on import for every 3.9 user with:
-#   TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'
+# Kept for consistency with client.py / langchain.py / llamaindex.py, not because the
+# `int | None` below still needs it: PEP 604 unions evaluate fine from 3.10, and the floor
+# is now >=3.10. It mattered under the old >=3.9 floor, and its ABSENCE here is what made
+# both published releases fail on import for every 3.9 user with
+# `TypeError: unsupported operand type(s) for |` — this was the only module missing it.
 from __future__ import annotations
 
 
