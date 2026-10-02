@@ -169,8 +169,11 @@ class VaultClient:
         ----------
         period : str, optional
             Time window.  Defaults to ``"last_30_days"``.
-            Other values: ``"last_7_days"``, ``"last_90_days"``, ``"mtd"``,
-            ``"ytd"``.
+            The server accepts exactly these five values: ``"last_7_days"``,
+            ``"last_30_days"``, ``"last_month"``, ``"this_month"``,
+            ``"this_year"``.  Anything else returns HTTP 400 ``INVALID_PERIOD``
+            (ENG-1023); it used to be silently replaced with ``"last_30_days"``
+            and answered 200.  For a year-to-date figure use ``"this_year"``.
         division_slug : str | None, optional
             If provided, scopes the snapshot to a single ServiceTitan
             division (tenant).
